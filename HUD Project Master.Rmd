@@ -1,0 +1,1941 @@
+---
+title: "HUD Data Vizualizations for Mission Philadelphia"
+author: "Jesse Lubell"
+date: "January 2023"
+output: 
+  pdf_document: 
+    keep_tex: yes
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+options(tinytex.verbose = TRUE)
+
+library(tidyverse)
+data(warpbreaks)
+library(ggstatsplot)
+library(HistData)
+library(multcomp)
+library(knitr)
+library(kableExtra)
+library(car)
+library(Sleuth2)
+library(corrplot)
+library(GGally)
+library(class)
+library(scatterplot3d)
+library(cluster)
+library(factoextra)
+library(gridExtra)
+
+#if(!require('MikTex')) {
+#    install.packages('MikTex')
+#    library('MikTex')
+#}
+
+
+
+
+#update.packages(ask = FALSE, checkBuilt = TRUE)
+#tinytex::tlmgr_update()
+
+
+
+
+
+```
+
+## **Exploratory Data Analysis for Mission Philadelphia**
+
+Per the HUD website, a "critical aspect of the McKinney-Vento Homeless
+Assistance Act is a focus on viewing the local homeless response as a
+coordinated system of homeless assistance options as opposed to homeless
+assistance programs and funding sources that operate independently in a
+community. To facilitate this perspective the Act now requires
+communities to measure their performance as a coordinated system, in
+addition to analyzing performance by specific projects or project
+types". The geographic region uses this "Continuum of Care" (CoC) to
+make homelessness "rare, brief, and non-recurring".  
+
+There are institutional challenges built into a system in which independent pieces are working together
+for a common goal but as in any circuit it may be unclear where weak links
+jeopardize system performance.  We will attempt to drill down using HUD system
+performance data available through Public Tableau to see specifically where
+the Philadelphia CoC exceeds or trails against the subset of Urban CoC's 
+and where it sits regionally.  With 8 years of data it should be easy to spot 
+some enduring trends & at least understand whether progress is "directionally
+correct" and continues to improve in serving the community's homeless segment. 
+
+
+The primary metrics that HUD provides to understand system performance are: 
+1) CoC's "length of stay"
+in any shelter, that is how many people over the course of the year land
+in a shelter and how long does it take for them to exit the shelter,
+safe haven, or transitional housing. A corollary of this metric is the
+2) "first time homeless" rate. It can be seen in the prism of how
+effectively has funding / resources been used to effectively prevent and
+divert homeless & how effective is the community at identifying and
+creating new pathways to housing. The third metric we will visualize is 3)
+"Return to Homelessness". It tracks the CoC's rate at which homelessness
+becomes a non-recurring station. Another interrelated metric to look at
+is 4) Successful housing placement / Successful Exit rate looking at Street Outreach and general success rate. 
+
+### KEY to Data set & renamed variables:
+
+All data sets have been exported via Public Tableau and read into the R environmnent for transformation and visualization.  Renmaned variables are: Length of Stay (X2015 - X2021) Success Exit Rate "Successful Street
+Outreach Program" (S2015 - S2021) Success Exit Rate "All" (SS2015 -
+SS2021) Return Rate (R2015 - R2021) First Time Homeless (F2015 - 2021)  Returns to Homelessness (R2015 - R2021)
+
+After doing the Exploratory Data Analysis and profiling of the Philadelphia COC, amongst the Urban set of COC's, the "East Region of Coc's and the National averages we will attempt to create a machine learning algorithm to create predictive analytics based on our independent variables.  We will attempt to identify whether significant relationships exist amongst these variables & we will then see if unsupervised clustering algorithms can show us any relationships between the variables or the CoC's to further our understanding of this data set. 
+
+```{r data, results='hide', message=FALSE, warning=FALSE, echo=FALSE}
+getwd()
+#setwd("C:/Users/12024/OneDrive/Desktop/HUD Project")
+
+#length of Stay (x2015 -x2021)
+HUD <- read.csv("./HUD by COC.csv")
+HUD_missing <-HUD[which(is.na(HUD$X2021)),]
+#Removed single missing data point (MO)
+# line 26:  COC = MO-604K
+
+remove(HUD_missing)
+#imputing missing values w/ group mean
+HUD[26,4] <- 128.65
+HUD[26,5] <- 124.69
+HUD[26,6] <- 123.46
+HUD[26,7] <- 131.5
+HUD[26,8] <- 133.17
+
+#rename variable name for ease of use
+HUD <- rename(HUD, COC=ï..HUD.CoC.Number)
+summary(HUD)
+
+Full_HUD <-  read.csv("./AvgStayALL.csv")
+Full_HUD <- rename(Full_HUD, COC = ï..HUD.CoC.Number)
+Full_HUD <- na.omit(Full_HUD)
+summary(Full_HUD)
+
+
+scaled_Full_HUD <-  Full_HUD[,-1]
+rownames(scaled_Full_HUD) <- Full_HUD[,1]
+
+scaled_Full_HUD <- scale(scaled_Full_HUD)
+HUD <-  HUD[-41,]
+
+
+```
+
+###  Average Length of Stay data
+
+Let's look at the most recent sets of data for the country, the Urban
+group, Eastern subset of the Urban group to contextualize Philadelphia's
+performance in the most recent year & examining for trends that pop in past
+years.  The first diagnostic plot is intened to see if this metric adheres to the shape of a normal distribution or to see if it needs to be transformed in respect to skewness, etc. 
+
+```{r  echo=FALSE, message=FALSE, message=FALSE, fig.align='center'}
+par(mfrow = c(2,2))
+FullX2021 = density(Full_HUD$X2021)
+#Fullx2021_4 <- density(scaled_Full_HUD, bw = 3)
+plot(FullX2021, xlim = c(0,180), cex.axis = .5,
+     main = "a. All COC's Avg Length of Stay, Density Plot",
+     lwd = 2)
+plot(FullX2021, cex.axis = .5,
+     main = "b. All Coc's Length of Stay, scaled",
+     lwd = 2, col = "blue"
+     )
+#par(mfrow = c(1,1))
+#normalpoints <- rnorm(10000000)
+#plot(density(normalpoints),
+#     main = "Avg Length of Stay vs Normal Distribution",
+#     xlab = "z score")
+#polygon(density(normalpoints), col = "red")
+#lines(c(FullX2021, Fullx2021_4), col = c("black", "blue"),
+ #     lty = 2, lwd = 2)
+Fullx2021_3 = density(Full_HUD$X2021, bw = 12)
+Group_2021 = density(HUD$X2021)
+Region_2021_sub <- subset(HUD, Region = "East")
+Region_2021_line <- density(Region_2021_sub$X2021)
+
+hist(Full_HUD$X2021, breaks = 20,
+     main = "c. Histogram + Kernal density", col = "maroon",
+     las = 1, cex.axis = .8, freq = F)
+lines(FullX2021, lwd = 2)
+
+Fullx2021_2 = density(Full_HUD$X2021, bw = 12)
+hist(Full_HUD$X2021, breaks = 20,
+     main = "d. Histogram + Kernal Density, bw = 3",
+     col = "maroon", las = 1, cex.axis = .8,
+     freq = F)
+lines(Fullx2021_2, lwd = 2, col = "black")
+#lines(Fullx2021_4, lwd = 2, col = "blue")
+lines(Region_2021_line, lwd = 2, col = "darkorange3")
+
+
+```
+
+
+The above plots give us the shape of the distribution for the top
+priority performance metric for all COC's, i.e. Average Length of Stay.
+The raw data from the most recent year shows that the plot skews right
+which we understand to mean that the Median value for the group is well
+below the mean, and the tail skews aggressively to the right which
+indicates there are more observations of COC's with considerably higher
+values and potentially outliers despite seeing the majority of the COC's
+recording values below the Median. The Boxplot below is a clearer
+visualization of this.  Even standardizing and scaling the data shows us just how far off from center these values are (the blue line on graph "d." and the forest green line on the histogram below.)  It's unlikely this data will be usefull for any regression analysis but we'll find out. 
+
+\*Footnote on data: (The Summary indicates we have a single NA in
+variable year 2017 - 2021. Missouri COC 604K, not reporting the last 5
+years. We will impute the missing data using the mean value for each
+column as to not skew the data)
+
+```{r  echo=FALSE, message=FALSE, message=FALSE, fig.align='center'}
+
+par(mfrow = c(1,1))
+hist(Full_HUD$X2021, breaks = 25,
+     main = "d. Histogram + Kernal Density",
+     col = "maroon", las = 1,
+     cex.axis = .75, freq = F,
+     cex.lab = .85,
+     ylim = c(0.00, 0.010),
+     xlim = c(0, 300),
+     xlab = "Average Length of Stay 2021, All COC's")
+
+lines(Fullx2021_3, lwd = 2)
+lines(Group_2021, lwd = 2, col = "red")
+#lines(Fullx2021_4, lwd = 2, col = "forestgreen")
+lines(Region_2021_line, lwd = 2, col = "blue")
+text(x = 200, y = .008, label = " Philadelphia Average = 162 Days
+        Eastern Region Average = 164 Days
+        Urban Metro Group Average = 133 Days
+        All COC Average = 120 Days", 
+      cex = .7, col = "mistyrose4")
+
+```
+
+
+After getting a feel for the 2021 data, let's see if the trend is present in
+any of the earlier years we have data on.  Outliers are clearly influencing our
+plots so we will need to adjust for that before considering any regression
+analysis.  The plot above is trimmed to exclude values over 300 days. 
+
+```{r   echo=FALSE, warning=FALSE, message=FALSE, results='asis'}
+
+par(mfrow = c(1,3))
+par(mar = c(3,1,2,3))
+HUD <- HUD[order(HUD$X2021),]
+dotchart(HUD$X2021, labels = HUD$COC, cex=.5,
+         main = "Average Duration of Stay\n (Major Urban Centers, 2021)", 
+         xlab = "Number of Days",
+         ylab = "Urban Center Abbr",
+         pch = 17, col = c("darkblue", "dodgerblue"), lcolor = "gray90",
+         cex.main = 1.5, cex.lab = 1.5)
+abline(v = 101, lty = "dashed", col = "forestgreen")
+abline(v=170, lty = "dotted", col = "red")
+abline(v=133, lty = "dashed")
+abline(v=160, lty = "dotted", col = "blue")
+mtext("Avg stay ->", side = 3.4, 
+      line = -11, adj = 0, cex = .5, col = "black")
+mtext("               <-- Philadelphia", 
+      side = 3, line = -13, adj = 0, cex = .68, col = "red")
+mtext("             <--Region Avg", 
+      side = 3, line = -15, adj = 0, cex = .68, col = "blue")
+
+      
+HUD <- HUD[order(HUD$X2019),]
+par(mar = c(3,1,2,3))
+dotchart(HUD$X2019, labels = HUD$COC, cex=.5,
+         main = "Average Duration of Stay\n (Major Urban Centers, 2019)", xlab = "Number of Days",
+        ylab = "Urban Center Abbr",
+         pch = 17, col = c("darkblue", "dodgerblue"), lcolor = "gray90",
+         cex.main = 1.5, cex.lab = 1.5)
+abline(v = 89, lty = "dashed", col = "forestgreen")
+abline(v=155, lty = "dotted", col = "red")
+abline(v=123, lty = "dashed")
+abline(v=162, lty = "dotted", col = "blue")
+mtext("Avg stay->", side = 3.4, 
+      line = -14, adj = 0, cex = .5, col = "black")
+mtext("             <--Philadelphia", 
+      side = 3, line = -11, adj = 0, cex = .68, col = "red")
+mtext("           <--Region Avg", 
+      side = 3, line = -15, adj = 0, cex = .68, col = "blue")
+
+
+HUD <- HUD[order(HUD$X2018),]
+par(mar = c(3,1,2,3))
+dotchart(HUD$X2018, labels = HUD$COC, cex=.5,
+         main = "Average Duration of Stay\n (Major Urban Centers, 2018)", xlab = "Number of Days",
+         ylab = "Urban Center Abbr",
+         pch = 17, col = c("darkblue", "dodgerblue"), lcolor = "gray90",
+         cex.main = 1.5, cex.lab = 1.5)
+abline(v = 88, lty = "dashed", col = "forestgreen")
+abline(v=170, lty = "dotted", col = "red")
+abline(v=123, lty = "dashed")
+abline(v=143, lty = "dotted", col = "blue")
+mtext("Avg stay->", side = 3.4, 
+      line = -14, adj = 0, cex = .5, col = "black")
+mtext("             <- Philadelphia", 
+      side = 3, line = -11, adj = 0, cex = .68, col = "red")
+mtext("           <-Region Avg", 
+      side = 3, line = -15, adj = 0, cex = .68, col = "blue")
+
+```
+This vizualization shows us a trend we will see throughout this...For the Urban 
+Grouping of CoC's, the Eastern region has a longer average stay than that of the
+group, and Philadelphia has consistently a longer duration of stay in any of the
+shelters that make up this data.  I've added a green line to show where the median value sits for all Coc's. 
+To understand this relationship better, here are boxplots showing more scale for this delta.
+
+```{r   echo=FALSE, warning=FALSE, message=FALSE, results='asis'}
+
+par(mfrow = c(1,1))
+par(bg = "white", fg = "lightslateblue", col.axis = "gray47", mar = c(7,8,5,4), cex = .65, las = 1)
+boxplot(Full_HUD$X2021, ylim = c(-50,500), horizontal = TRUE, main = "Average Length of Stay\n 2021",
+        data = Full_HUD, las = 2, cex.axis=.75, col = c("bisque", "azure", "coral", "mistyrose3"),
+        ylab = "All COC's", xlab = "Length of Stay in Days")
+abline(v=105, lty = "dotted", lwd = 3, col = "blue") #Median
+abline(v=120, lty = "dotted", lwd = 3, col = "coral") #Mean
+abline(v=133, lty = "dashed", lwd = 3, col = "forestgreen")#Urban Group
+abline(v=162, lty = "dashed", lwd = 3, col = "red" ) #PA
+legend("topright", legend = c("Median for All COC's", "Mean for All COC's","Urban Group Avg", "Philadelphia in '21"), 
+       text.col = c("blue", "coral", "forestgreen", "red", "black"), bg="mintcream" )
+
+
+
+
+par(mfrow = c(2,1))
+par(bg = "white", fg = "lightslateblue", col.axis = "gray47", cex = .65, las = 1)
+boxplot(Full_HUD$X2020, ylim = c(-50,500), horizontal = TRUE, main = "Average Length of Stay\n 2020",
+        data = Full_HUD, las = 2, cex.axis=.75, col = c("bisque", "azure", "coral", "mistyrose3"),
+        ylab = "All COC's", xlab = "Length of Stay in Days")
+abline(v=102, lty = "dotted", lwd = 3, col = "blue") #Median
+abline(v=118, lty = "dotted", lwd = 3, col = "coral") #Mean
+abline(v=131, lty = "dashed", lwd = 3, col = "forestgreen")#Urban Group
+abline(v=155, lty = "dashed", lwd = 3, col = "red" ) #PA
+
+par(bg = "white", fg = "lightslateblue", col.axis = "gray47", cex = .65, las = 1)
+boxplot(Full_HUD$X2015, ylim = c(-50,650), horizontal = TRUE, main = "Average Length of Stay\n 2015",
+        data = Full_HUD, las = 2, cex.axis=.75, col = c("bisque", "azure", "coral", "mistyrose3"),
+        ylab = "All COC's", xlab = "Length of Stay in Days")
+abline(v=99, lty = "dotted", lwd = 3, col = "blue") #Median
+abline(v=132, lty = "dotted", lwd = 3, col = "coral") #Mean
+abline(v=144, lty = "dashed", lwd = 3, col = "forestgreen")#Urban Group
+abline(v=276, lty = "dashed", lwd = 3, col = "red" ) #PA
+
+par(bg = "white", fg = "lightslateblue", col.axis = "gray47", cex = .65, las = 1)
+boxplot(Full_HUD$X2017, ylim = c(-50,600), horizontal = TRUE, main = "Average Length of Stay\n 2017",
+        data = Full_HUD, las = 2, cex.axis=.75, col = c("bisque", "azure", "coral", "mistyrose3"),
+        ylab = "All COC's", xlab = "Length of Stay in Days")
+abline(v=91, lty = "dotted", lwd = 3, col = "blue") #Median
+abline(v=119, lty = "dotted", lwd = 3, col = "coral") #Mean
+abline(v=128, lty = "dashed", lwd = 3, col = "forestgreen")#Urban Group
+abline(v=170, lty = "dashed", lwd = 3, col = "red" ) #PA
+
+```
+Due to a handful of extreme outliers, especially in the '17 and '15 subset, 
+I have scaled the x-axis down to get a more representative
+distribution for this variable. 
+
+Note on the coloring of the lines I'll be using in the Boxplots:  For all CoC's 
+(of which there are 410 in the country) the Blue line represents the Median 
+(50%) value, orange (coral) represents the average value for the group.  
+The forest green line is the average value for the Urban group (49 CoC's of which
+Philadelphia "PA-505" is a member) & the Red line represents the value for 
+Philadelphia CoC of which this exploration is most concerned with. For the sake
+of aesthetics I will not including this key on the next handful of boxplots.
+
+```{r  echo=FALSE, results='hide'}
+#Outliers
+Filtered2015 <- Full_HUD[Full_HUD$X2015 < 700,]
+summary(Filtered2015)
+
+Filtered2017 <- Filtered2017 <- Full_HUD[Full_HUD$X2017 < 500,]
+summary(Filtered2017)
+
+
+#Finaldive$ADPtier[Finaldive$ADP >=25 & Finaldive$ADP <=52] <- "Second Tier"
+```
+
+
+
+```{r, include=FALSE, echo=FALSE}
+par(mfrow = c(1,2))
+boxplot(Filtered2015$X2015, horizontal = TRUE, main = "Average Length of Stay\n 2015 (Outliers Removed)",
+        data = Full_HUD, las = 2, cex.axis=.75, col = c("bisque", "azure", "coral", "mistyrose3"),
+        ylab = "All COC's", xlab = "Length of Stay in Days")
+abline(v=99, lty = "dotted", lwd = 3, col = "blue") #Median
+abline(v=132, lty = "dotted", lwd = 3, col = "coral") #Mean
+abline(v=144, lty = "dashed", lwd = 3, col = "forestgreen")#Urban Group
+abline(v=276, lty = "dashed", lwd = 3, col = "red" ) #PA
+
+
+
+boxplot(Filtered2017$X2017, horizontal = TRUE, main = "Average Length of Stay\n 2017(Outliers Removed)",
+        data = Full_HUD, las = 2, cex.axis=.75, col = c("bisque", "azure", "coral", "mistyrose3"),
+        ylab = "All COC's", xlab = "Length of Stay in Days")
+abline(v=91, lty = "dotted", lwd = 3, col = "blue") #Median
+abline(v=119, lty = "dotted", lwd = 3, col = "coral") #Mean
+abline(v=128, lty = "dashed", lwd = 3, col = "forestgreen")#Urban Group
+abline(v=170, lty = "dashed", lwd = 3, col = "red" ) #PA
+
+
+
+```
+
+The interesting pattern that surfaces after taking a 30,000 foot view of
+the data is that as for the Length of Stay metric, The Urban group
+average lags a bit behind where COC's are nationally in most years. And
+Philadelphia lags far behind all of the Urban group.
+
+```{r results='hide', message=FALSE, warning=FALSE, echo=FALSE}
+
+#New Metrics to merge
+Exit <- read.csv("./Successful Exit Metro.csv")
+summary(Exit)
+
+#Changing variable names for years to merge with Avg Stay Data
+Exit<- rename(Exit, COC=ï..HUD.CoC.Number)
+Exit <- rename(Exit, S2015 = X2015)
+Exit <- rename(Exit, S2016 = X2016)
+Exit <- rename(Exit, S2017 = X2017)
+Exit <- rename(Exit, S2018 = X2018)
+Exit <- rename(Exit, S2019 = X2019)
+Exit <- rename(Exit, S2020 = X2020)
+Exit <- rename(Exit, S2021 = X2021)
+
+
+summary(Exit) 
+#impute missing values
+Exit$S2015[is.na(Exit$S2015)] <- mean(Exit$S2015, na.rm = TRUE)
+Exit$S2016[is.na(Exit$S2016)] <- mean(Exit$S2016, na.rm = TRUE)
+Exit$S2017[is.na(Exit$S2017)] <- mean(Exit$S2017, na.rm = TRUE)
+Exit$S2018[is.na(Exit$S2018)] <- mean(Exit$S2018, na.rm = TRUE)
+Exit$S2019[is.na(Exit$S2019)] <- mean(Exit$S2019, na.rm = TRUE)
+Exit$S2020[is.na(Exit$S2020)] <- mean(Exit$S2020, na.rm = TRUE)
+Exit$S2021[is.na(Exit$S2021)] <- mean(Exit$S2021, na.rm = TRUE)
+
+summary(Exit)
+
+#WRITE Looping function to automate this?
+
+HUD <- merge(HUD, Exit, by = "COC")
+HUD
+```
+
+###  Successful Exit Rate Data
+
+Let's now visualize the most recent year's data to see how PA sits
+relative to the major Urban Metro Areas in Successful Exit Rate from the 
+Outreach program & Non-Outreach populations.
+
+
+
+
+```{r echo=FALSE, results='hide'}
+#SS Success Rate / Returns plots as with Avg length of Stay
+
+AllCOCExit <- read.csv("./AllCOCsExit.csv")
+#summary(AllCOCExit)
+AllCOCExit <- rename(AllCOCExit, COC = ï..HUD.CoC.Number)
+AllCOCExit <- na.omit(AllCOCExit)
+summary(AllCOCExit)
+
+
+non_Outreach_exit <- read.csv("./Successful Exit non Outreach.csv")
+#summary(non_Outreach_exit)
+
+#Changing variable names for years to merge with Avg Stay Data
+non_Outreach_exit <- rename(non_Outreach_exit, COC = HUD.CoC.Number)
+
+non_Outreach_exit <- rename(non_Outreach_exit, SS2015 = X2015)
+non_Outreach_exit <- rename(non_Outreach_exit, SS2016 = X2016)
+non_Outreach_exit <- rename(non_Outreach_exit, SS2017 = X2017)
+non_Outreach_exit <- rename(non_Outreach_exit, SS2018 = X2018)
+non_Outreach_exit <- rename(non_Outreach_exit, SS2019 = X2019)
+non_Outreach_exit <- rename(non_Outreach_exit, SS2020 = X2020)
+non_Outreach_exit <- rename(non_Outreach_exit, SS2021 = X2021)
+
+
+#summary(non_Outreach_exit)
+#impute missing values
+
+non_Outreach_exit <- na.omit(non_Outreach_exit)
+#summary(non_Outreach_exit)
+
+
+HUD <- merge(HUD, non_Outreach_exit, by = "COC")
+
+#Return data cleaning and merge
+Returns <- read.csv("./Rtrns to Hmless Box+Whisker.csv")
+summary(Returns)
+
+#Changing variable names for years to merge with HUD DF
+Returns <- rename(Returns, COC = ï..HUD.CoC.Number)
+
+Returns <- rename(Returns, R2015 = X2015)
+Returns <- rename(Returns, R2016 = X2016)
+Returns <- rename(Returns, R2017 = X2017)
+Returns <- rename(Returns, R2018 = X2018)
+Returns <- rename(Returns, R2019 = X2019)
+Returns <- rename(Returns, R2020 = X2020)
+Returns <- rename(Returns, R2021 = X2021)
+Returns <- rename(Returns, R.Param = Param.2.Return.Timeframe)
+
+HUD <- merge(HUD, Returns, by = "COC")
+summary(HUD)
+#TX600, TX601 - Omit from this data set
+
+
+HUD$R2015[is.na(HUD$R2015)] <- mean(HUD$R2015, na.rm = TRUE)
+HUD$R2016[is.na(HUD$R2016)] <- mean(HUD$R2016, na.rm = TRUE)
+HUD$R2017[is.na(HUD$R2017)] <- mean(HUD$R2017, na.rm = TRUE)
+HUD$R2018[is.na(HUD$R2018)] <- mean(HUD$R2018, na.rm = TRUE)
+HUD$R2019[is.na(HUD$R2019)] <- mean(HUD$R2019, na.rm = TRUE)
+HUD$R2020[is.na(HUD$R2020)] <- mean(HUD$R2020, na.rm = TRUE)
+HUD$R2021[is.na(HUD$R2021)] <- mean(HUD$R2021, na.rm = TRUE)
+
+summary(HUD)
+
+#remove(Exit)
+#remove(Filtered2015)
+#remove(Filtered2017)
+#remove(FullX2021)
+#remove(Fullx2021_2)
+#remove(Fullx2021_3)
+#remove(non_Outreach_exit)
+#remove(Returns)
+
+
+AllCOCExit <-  rename(AllCOCExit, SS2015 = X2015)
+AllCOCExit <-  rename(AllCOCExit, SS2016 = X2016)
+AllCOCExit <-  rename(AllCOCExit, SS2017 = X2017)
+AllCOCExit <-  rename(AllCOCExit, SS2018 = X2018)
+AllCOCExit <-  rename(AllCOCExit, SS2019 = X2019)
+AllCOCExit <-  rename(AllCOCExit, SS2020 = X2020)
+AllCOCExit <-  rename(AllCOCExit, SS2021 = X2021)
+
+Full_HUD <- merge(Full_HUD, AllCOCExit, by = "COC")
+summary(Full_HUD)
+#remove(AllCOCExit)
+
+```
+
+
+```{r   message=FALSE, warning=FALSE, echo=FALSE, fig.align='left'}
+par(mfrow = c(1,2), cex.main = .8)
+ALLSS2021 = density(Full_HUD$SS2021)
+#plot(ALLSS2021$X2021, xlim = c(0.00, 1.0),
+    # main = "a. All COC's Successful Exits, Density Plot",
+     #lwd = 2)
+
+hist(Full_HUD$SS2021, breaks = 25,
+     main = "b. Exit Rate + Kernal density", col = "maroon",
+     las = 1, cex.axis = .75, freq = F, cex.lab = .75,
+     xlab = "Successful Exit Rate, All COC's")
+lines(ALLSS2021, lwd = 2)
+
+
+ALLSS2021_3 = density(Full_HUD$SS2021, bw = 12)
+Group_2021 = density(HUD$SS2021)
+Region_2021_sub_SS <- subset(HUD, Region = "East")
+Region_2021_line_SS <- density(Region_2021_sub_SS$SS2021)
+
+hist(Full_HUD$SS2021, breaks = 20,
+     main = "d. Exit Rate + Kernal Density",
+     col = "maroon", las = 1,
+     cex.axis = .75, freq = F,
+     cex.lab = .75,
+     xlab = "Successful Exit Rate, All COC's")
+
+lines(ALLSS2021, lwd = 2)
+lines(Group_2021, lwd = 2, col = "red")
+lines(Region_2021_line_SS, lwd = 2, col = "blue")
+text(x = .7, y = 2.2, label = " Philadelphia = 25%
+        East Avg = 37%
+        Urban Avg = 37%
+        All COC Avg = 41%", 
+      cex = .48, col = "mistyrose4")
+
+
+
+
+
+```
+
+Now that we know the shape of the distribution for this metric
+Nationally, let's see how it shakes out on a regional basis & look for
+trends.  Unlike our last performance metric the distribution appears more
+"normal", I.e. without skewness or a long tail on either side of the center.
+
+```{r   message=FALSE, warning=FALSE, echo=FALSE, fig.align='left'}
+
+HUD <- HUD[order(HUD$S2021),]
+
+par(mfrow = c(1,3))
+par(mar = c(3,1,2,3))
+dotchart(HUD$S2021, labels = HUD$COC, cex = .5, main = "Exits in 2021", xlab = "Success Rate", ylab = "Urban Center Abbr", pch = 17, col = c("darkblue", "dodgerblue"), lcolor = "gray90", cex.main = 1.5, cex.lab = 1.5)
+abline(v=.399, lty = "dotted")
+abline(v=.005, lty = "dashed", col = "red")
+mtext("             <- Avg Success Rate", side = 3, 
+      line = -16, adj = 0, cex = .68, col = "black")
+mtext("   <----- Philadelphia", 
+     side = 1, line = -3, adj = 0, cex = .68, col = "red")
+
+HUD <- HUD[order(HUD$S2019),]
+dotchart(HUD$S2019, labels = HUD$COC, cex = .5, main = "Exits in 2019", xlab = "Success Rate", ylab = "Urban Center Abbr", pch = 17, col = c("darkblue", "dodgerblue"), lcolor = "gray90", cex.main = 1.5, cex.lab = 1.5)
+abline(v=.41, lty = "dotted")
+abline(v=.005, lty = "dashed", col = "red")
+mtext("               <- Avg Success Rate", side = 3, 
+      line = -16, adj = 0, cex = .68, col = "black")
+
+mtext("   <------Philadelphia", 
+     side = 1, line = -3, adj = 0, cex = .68, col = "red")
+
+HUD <- HUD[order(HUD$S2018),]
+dotchart(HUD$S2018, labels = HUD$COC, cex = .5, main = "Exits in 2018", xlab = "Success Rate", ylab = "Urban Center Abbr", pch = 17, col = c("darkblue", "dodgerblue"), lcolor = "gray90", cex.main = 1.5, cex.lab = 1.5)
+
+abline(v=.40, lty = "dotted")
+abline(v=.0015, lty = "dashed", col = "red")
+mtext("                 <- Avg Success Rate", side = 3, 
+      line = -16, adj = 0, cex = .68, col = "black")
+mtext("   <------Philadelphia", 
+      side = 1, line = -3, adj = 0, cex = .68, col = "red")
+```
+
+Why is this metric so low in 2021 in PA?  Removing the variable of Covid by
+examining pre-pandemic years against regional data this metric still seems
+extraordinarily low. 
+
+PA in 2019 had less 1% success rate based on HUD System Performance
+"Successful Street Outreach": Exits to temporary or permanent Housing
+had a National success rate of 33% and in the subset of Major Cities the
+average sat closer to 40% .
+
+Let's see how the CoC rated on the Non-Outreach Success rate...
+
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+
+par(mar = c(3,1,2,3))
+HUD <- HUD[order(HUD$SS2021),]
+dotchart(HUD$SS2021, labels = HUD$COC, cex=.5,
+         main = "Success Rate\n (Major Urban Centers, 2021)", xlab = "Success Rate (Non Outreach)",
+         ylab = "Urban Center Abbr",
+         pch = 17, col = c("darkblue", "dodgerblue"), lcolor = "gray90",
+         cex.main = 1.5, cex.lab = 1.5)
+abline(v=.40, lty = "dashed")
+abline(v=.26, lty = "dotted", col = "red")
+abline(v=.37, lty = "dotted", col = "blue")
+mtext("                                         <----Philadelphia COC", side = 3.4, 
+      line = -32, adj = 0, cex = .6, col = "red")
+
+mtext("                                                                             <---Urban Avg", 
+      side = 3, line = -13, adj = 0, cex = .6, col = "black")
+mtext("                                                                    <-----East Avg",
+      side = 3, line = -16, adj = 0, cex = .6, col = "blue")
+
+par(mar = c(3,1,2,3))
+HUD <- HUD[order(HUD$SS2019),]
+dotchart(HUD$SS2019, labels = HUD$COC, cex=.5,
+         main = "Success Rate\n (Major Urban Centers, 2019)", 
+         xlab = "Success Rate (Non Outreach)",
+         ylab = "Urban Center Abbr",
+         pch = 17, col = c("darkblue", "dodgerblue"), lcolor = "gray90",
+         cex.main = 1.5, cex.lab = 1.5)
+abline(v=.44, lty = "dashed")
+abline(v=.26, lty = "dotted", col = "red")
+abline(v=.40, lty = "dotted", col = "blue")
+mtext("                                            <---Philadelphia COC", side = 3.4, 
+      line = -31, adj = 0, cex = .6, col = "red")
+mtext("                                                                                    <---Urban Avg", 
+      side = 3, line = -13, adj = 0, cex = .6, col = "black")
+mtext("                                                                             <-----East Avg",
+      side = 3, line = -16, adj = 0, cex = .6, col = "blue")
+
+
+par(mar = c(3,1,2,3))
+HUD <- HUD[order(HUD$SS2018),]
+dotchart(HUD$SS2018, labels = HUD$COC, cex=.5,
+         main = "Success Rate\n (Major Urban Centers, 2018)", 
+         xlab = "Success Rate (Non Outreach)",
+         ylab = "Urban Center Abbr",
+         pch = 17, col = c("darkblue", "dodgerblue"), lcolor = "gray90",
+         cex.main = 1.5, cex.lab = 1.5)
+abline(v=.43, lty = "dashed")
+abline(v=.25, lty = "dotted", col = "red")
+abline(v=.4, lty = "dotted", col = "blue")
+mtext("                                         <--Philadelphia COC", side = 3.4, 
+      line = -33, adj = 0, cex = .6, col = "red")
+mtext("                                                                                        <---Urban Avg", 
+      side = 3, line = -13, adj = 0, cex = .6, col = "black")
+mtext("                                                                                 <-----East Avg",
+      side = 3, line = -16, adj = 0, cex = .6, col = "blue")
+
+
+par(mfrow = c(1,1))
+par(bg = "white", fg = "lightslateblue", col.axis = "gray47", mar = c(7,8,5,4), cex = .65, las = 1)
+boxplot(Full_HUD$SS2021, horizontal = TRUE, main = "Successful Exit Rate\n 2021",
+        data = Full_HUD, las = 2, cex.axis=.75, col = c("bisque", "azure", "coral", "mistyrose3"),
+        ylab = "All COC's", xlab = "Successful Exit Rate")
+abline(v=.4, lty = "dotted", lwd = 3, col = "blue") #Median
+abline(v=.41, lty = "dotted", lwd = 3, col = "coral") #Mean
+abline(v=.37, lty = "dashed", lwd = 3, col = "forestgreen")#Urban Group
+abline(v=.26, lty = "dashed", lwd = 3, col = "red" ) #PA
+legend("topright", legend = c("Median for All COC's", "Mean for All COC's","Urban Group Avg", "Philadelphia in '21"), 
+       text.col = c("blue", "coral", "forestgreen", "red"), bg="mintcream" )
+```
+
+While considerably higher than the Outreach program success rate, the overall 
+rate for the Philadelphia CoC to place sheltered populations into long term 
+housing is still amongst the lowest in the Urban group and a material difference from the National mean.  Continuing with the 
+earlier trend, the Eastern region has slightly lower average success rate 
+compared to the Urban group average. 
+
+
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+
+sp(Full_HUD$SS2021, Full_HUD$X2021, jitter = list(x=2,y=2),
+   smoother = FALSE, spread = FALSE, regLine = FALSE,
+   ylab = "Average Time of Stay", xlab = "Success Rate" )
+
+
+smoothScatter(Full_HUD$SS2021, Full_HUD$X2021, las =1, main = 
+                "Average Time of Stay & Success Rate")
+
+
+
+```
+Looking at a multivariate plot of Successful Exit Rate and Average length of Stay, Philadelphia falls at an intersection below average on one end and above average on the other.  The shape of this distribution indicates there's not a linear relationship between these values or much to glean from the shape of the distribution.  The same shape arises from a smoothed scatter plot.
+
+
+
+
+```{r  echo=FALSE, results='hide'}
+HUD$Region <- c()
+HUD$Region <- factor(HUD$RGN, levels = c(1,2,3,4), labels = c("North", "South","East", "West"))
+table(HUD$COC, HUD$Region)
+
+regional_avg_stay <- HUD %>%
+  dplyr::group_by(Region = Region) %>%
+  dplyr::summarise(
+    X2015 = mean(X2015, na.rm = TRUE),
+    X2016 = mean(X2016, na.rm = TRUE),
+    X2017 = mean(X2017, na.rm = TRUE),
+    X2018 = mean(X2018, na.rm = TRUE),
+    X2019 = mean(X2019, na.rm = TRUE),
+    X2020 = mean(X2020, na.rm = TRUE),
+    X2021 = mean(X2021, na.rm = TRUE))
+
+HUD <- HUD[order(HUD$COC),]
+
+PA <- subset(HUD, COC == 'PA-500', select = c(Region, X2015:X2021))
+
+
+#PA <-  HUD[which(HUD$COC == 'PA-500'),]
+#PA <- PA[25, 2:8]
+#(PA <- HUD[37, 25, 2:8])
+
+regional_avg_stay <- rbind(regional_avg_stay, PA)
+regional_avg_stay$Region <- as.character(regional_avg_stay$Region)
+
+regional_avg_stay[5,1] <- 'PA-500'
+regional_avg_stay
+
+group_avg_stay <- HUD %>% 
+  dplyr::summarize(X2015 = mean(X2015, na.rm = TRUE),
+                   X2016 = mean(X2016, na.rm = TRUE),
+                   X2017 = mean(X2017, na.rm = TRUE),
+                   X2018 = mean(X2018, na.rm = TRUE),
+                   X2019 = mean(X2019, na.rm = TRUE),
+                   X2020 = mean(X2020, na.rm = TRUE),
+                   X2021 = mean(X2021, na.rm = TRUE))
+
+    
+holder <- "Group Average"
+group_avg_stay <- data.frame(holder, group_avg_stay)
+
+group_avg_stay <- rename(group_avg_stay, Region = holder)
+regional_avg_stay <- rbind(regional_avg_stay, group_avg_stay)
+regional_avg_stay
+
+
+```
+
+
+```{r echo=FALSE, results='hide'}
+
+nrow(HUD)
+nrow(HUD[!is.na(HUD$S2019),])
+nrow(HUD[!is.na(HUD$S2021),])
+
+#mtext("              Data provided by HUD Performance Measures via Public Tableau ",
+ #                       side = 1,
+  #      line = -4, adj = 0, cex = .68, col = "black")
+
+remove(ALLSS2021)
+remove(ALLSS2021_3)
+remove(Group_2021)
+remove(Region_2021_line)
+remove(Region_2021_sub)
+remove(Region_2021_line_SS)
+remove(Region_2021_sub_SS)
+
+```
+
+
+So from our first performance metric we observed that Philadelphia lags
+far behind the Length of stay metric even in the urban and regional
+subsets. There may be some mitigating factors as to why the successful
+exit metric is so low compared to the urban/regional/national grouping
+which requires additional research.
+ 
+Let's also create a factor variable to organize each of the COC's in the urban 
+group into 4 buckets: East, West, North, South. While imperfect and oversimplified
+this may give us some insights as to how we can contextualize each COC's
+performance in conjunction with their regional counterparts.
+
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+dt1 <- subset(HUD, select = c(COC, Region))
+  
+  
+  #HUD[, c(1,25)]
+
+#dt %>% 
+ # kbl() %>% 
+#  kable_material(c("hover", "striped"))
+#(caption = "Average Length of Stay by Region (Urban Subset)" 
+  
+
+dt1 %>% 
+  kbl() %>% 
+  kable_material(c("hover", "striped"))
+caption = "Grouping COC's by Region:  Table"
+
+#PA <- subset(HUD, COC == 'PA-500', select = c(Region, X2015:X2021))
+```
+This is our new factor variable for the Urban Group showing how they have 
+been broken into 4 geographical buckets for the next set of boxplots, and I've 
+added a couple of tables to show averages for each region, for the group and how
+Philadelphia stacks up...
+
+
+
+```{r  echo=FALSE, message=FALSE, warning=FALSE}
+#par(mfrow = c(2,2))
+#wincatrable <- table(regional_avg_stay)
+#knitr::kable(
+#  wincatrable,
+#  caption = "Average Length of Stay"
+#)
+
+#kable(regional_avg_stay)
+dt <- regional_avg_stay[1:6, 1:8]
+dt %>% 
+  kbl() %>% 
+  kable_material(c("hover", "striped"))
+
+
+
+
+
+
+```
+
+
+Taking the 8 year sample size of Average Length of stay per Urban metro
+Region, we can see that PA-500 lags well beyond the metro group average and aside from the last two years of data, it lags behind the Eastern
+Regional average and while it does lag behind the other COC's in it's
+group it's evident that the Eastern Region as a whole lags behind the
+Urban group's length of stay metric.  As a reminder, "X2015" is average length of stay value for 2015, and "SS2015" is the success rate value. In the last year of available data we can see that the West region and the East have the longest average time of stay and the North region shows the lowest average success rate amongst the regions. The East and West have the highest respestive values for that metric while Philadelphia has a considerably lower value than the averages. 
+
+
+```{r   echo=FALSE, message=FALSE, results='hide', warning=FALSE}
+
+#Same Exercise but this time with the SS Grouping
+(regional_success <- HUD %>%
+  dplyr::group_by(Region = Region) %>%
+  dplyr::summarise(
+    SS2015 = mean(SS2015, na.rm = TRUE),
+    SS2016 = mean(SS2016, na.rm = TRUE),
+    SS2017 = mean(SS2017, na.rm = TRUE),
+    SS2018 = mean(SS2018, na.rm = TRUE),
+    SS2019 = mean(SS2019, na.rm = TRUE),
+    SS2020 = mean(SS2020, na.rm = TRUE),
+    SS2021 = mean(SS2021, na.rm = TRUE)))
+
+#AND THEN DO A SUMMARY OF PA-500 AND RBIND THE RESULTS AND PRINT.  Regional_success
+
+HUD <- HUD[order(HUD$COC),]
+
+PA_SS <- subset(HUD, COC == 'PA-500', select = c(Region, SS2015:SS2021))
+
+
+#PA <-  HUD[which(HUD$COC == 'PA-500'),]
+#PA <- PA[25, 2:8]
+
+
+#(PA <- HUD[37, 25, 2:8])
+
+regional_success <- rbind(regional_success, PA_SS)
+
+
+regional_success$Region <- as.character(regional_success$Region)
+
+#Had to change column 1 of the Philadelphia summary from Region (needed for the Rbind to character vector to change ID to PA-500)
+regional_success[5,1] <- 'PA-500'
+print(regional_success)
+
+(group_regional_success <- summarize(HUD, SS2015 = mean(SS2015, na.rm = TRUE),
+    SS2016 = mean(SS2016, na.rm = TRUE),
+    SS2017 = mean(SS2017, na.rm = TRUE),
+    SS2018 = mean(SS2018, na.rm = TRUE),
+    SS2019 = mean(SS2019, na.rm = TRUE),
+    SS2020 = mean(SS2020, na.rm = TRUE),
+    SS2021 = mean(SS2021, na.rm = TRUE)))
+
+
+#G_Region <- "Group Average"
+#group_regional_success <- data.frame(Region, group_regional_success)
+#regional_success <- rbind(regional_success, group_regional_success)
+
+```
+
+It's worth interrogating why the Philadelphia COC again lags
+behind the Urban Group Average in all but one of the 8 years of data,
+especially when the average success rate for the Eastern Region outpaces
+the Urban group in every year of this data set.
+
+```{r echo=FALSE}
+
+
+
+regional_success %>% 
+  kbl() %>% 
+  kable_material(c("hover", "striped"))
+
+remove(PA)
+remove(PA_SS)
+
+
+
+
+```
+
+
+So the pattern appears to repeat in looking at these performance
+metrics... On the whole COC's average a 41% successful exit rate. The
+Urban group average is 37%, (The East Region is slightly above this at
+39%) and Philadelphia success rate is 26%. Coupled with the Non-Outreach
+success rate which is the very worst in the Urban metro grouping, it
+seems like a unique phenomena exists in this community or in the COC
+apparatus limiting the success in each metric.  While the East cluster
+of CoC's hovers around 45% each year, Philadelphia consistenly sits around
+25% success rate.
+
+### Returns to Homelessness
+
+
+Now let's look at one of the final metrics HUD provides, Returns to Homelessness.
+In our more recent years it does appear the East cluster of CoC's has a slightly
+higher frequency of higher return %
+
+```{r echo=FALSE}
+
+AllCOCreturn <- read.csv("./AllCOC'sReturn.csv")
+#summary(AllCOCreturn)
+
+AllCOCreturn <- rename(AllCOCreturn, COC = HUD.CoC.Number)
+#AllCOCreturn <- na.omit(AllCOCreturn)
+
+
+#Display plots 4x4
+#Blue dotted line is the Nat'l Average
+par(mfrow = c(1,2))
+par(bg = "white", fg = "lightslateblue", col.axis = "gray47", mar = c(7,8,5,4), cex = .65, las = 1)
+boxplot(HUD$R2019~HUD$Region, horizontal = TRUE, main = "Return to Homelessness Metric\n 2019",
+        data = HUD, las = 2, cex.axis=.75, col = c("bisque", "azure", "coral", "mistyrose3"),
+        xlab = "Homelessness Return%", ylab = "HUD Region")
+abline(v = c(.06, 0.106), lty = "dotted", lwd = 2, col = c("red", "blue"))
+
+boxplot(HUD$R2021~HUD$Region, horizontal = TRUE, main = "Return to Homelessness Metric\n 2021",
+        data = HUD, las = 2, cex.axis=.75, col = c("bisque", "azure", "coral", "mistyrose3"),
+        xlab = "Homelessness Return%", ylab = "HUD Region")
+abline(v = c(.09, 0.105), lty = "dotted", lwd = 2, col = c("red", "blue"))
+
+boxplot(HUD$R2018~HUD$Region, horizontal = TRUE, main = "Return to Homelessness Metric\n 2018",
+        data = HUD, las = 2, cex.axis=.75, col = c("bisque", "azure", "coral", "mistyrose3"),
+        xlab = "Homelessness Return%", ylab = "HUD Region")
+abline(v = c(.04, 0.083), lty = "dotted", lwd = 2, col = c("red", "blue"))
+
+boxplot(HUD$R2017~HUD$Region, horizontal = TRUE, main = "Return to Homelessness Metric\n 2017",
+        data = HUD, las = 2, cex.axis=.75, col = c("bisque", "azure", "coral", "mistyrose3"),
+        xlab = "Homelessness Return%", ylab = "HUD Region")
+abline(v = c(.04, 0.082), lty = "dotted", lwd = 2, col = c("red", "blue"))
+
+
+
+
+
+
+```
+
+The Returns to homeless numbers are the single metric so far in this
+exploratory data analysis where the COC of Philadelphia is
+outpacing the Urban Group & Eastern Region in a positive manner. For the national
+group the average tends to hover around 1%. Philadelphia COC reports this rate
+anywhere between 4 & 9%  The Eastern cluster of CoC's hovers around 10%.
+
+```{r Returns to Homlessness,  results='hide', message=FALSE, warning=FALSE, echo=FALSE}
+#Renaming Data set and removing unneeded components
+
+AllCOCreturn[is.na(AllCOCreturn)] <- 0
+summary(AllCOCreturn)
+
+HUD <- HUD[order(HUD$COC),]
+PA <- HUD[37, 23:29]
+PA
+
+
+Regional_Avg <- dplyr:::filter.data.frame(HUD, Region == "East") %>% 
+  dplyr::select(COC, Region, R2015:R2021)
+
+Regional_Avg
+mean(Regional_Avg$R2015)
+
+
+
+#Regional_Avg_by_year <- Regional_Avg %>% 
+ # dplyr::select(COC, Region, R2015:R2021) %>% 
+#  summarise(Regional_Avg_by_year = mean(Regional_Avg))
+
+#Regional_Avg_by_year
+  
+regional_avg_return <- Regional_Avg %>%   
+  group_by(Region) %>% 
+  summarize(Regional_Avg, R2015 = mean(R2015, na.rm = TRUE),
+    R2016 = mean(R2016, na.rm = TRUE),
+    R2017 = mean(R2017, na.rm = TRUE),
+    R2018 = mean(R2018, na.rm = TRUE),
+    R2019 = mean(R2019, na.rm = TRUE),
+    R2020 = mean(R2020, na.rm = TRUE),
+    R2021 = mean(R2021, na.rm = TRUE))
+
+regional_avg_return <- regional_avg_return[1, -2]
+
+```
+
+```{r echo=FALSE, include=TRUE}
+
+regional_avg_return %>% 
+  kbl() %>% 
+  kable_material(c("hover", "striped"))
+
+
+```
+
+
+
+```{r, echo=FALSE}
+
+HUD <- HUD[order(HUD$R2021),]
+dotchart(HUD$R2021, labels = HUD$COC, cex=.5,
+         main = "Return to Homelessness Rate\n (Major Urban Centers, 2021)", 
+         xlim = c(0.00, 0.20),
+         xlab = "Return Rate Reported (%)",
+         ylab = "Urban Center Abbr",
+         pch = 17, col = c("darkblue", "dodgerblue"), lcolor = "gray90",
+         cex.main = 2, cex.lab = 1.5)
+abline(v= c(.096, .10, .105), lty = "dotted", col = c("red", "black", "blue"))
+
+mtext("                                                 Philadelphia COC  ->", side = 3.4, 
+      line = -19, adj = 0, cex = .68, col = "red")
+mtext("                                                                                         <----- Average Urban Group", 
+      side = 3, line = -16, adj = 0, cex = .68, col = "black")
+mtext("              Data provided by HUD Performance Measures via Public Tableau ",
+                        side = 1,
+        line = -4, adj = 0, cex = .68, col = "black")
+mtext("                                     <---East Cluster",
+      side = 3, line = -14, cex = .68, col = "blue" )
+
+
+```
+
+The Eastern Region (DC, FL, MA, MD, NE, NY, PA, VA, WV) has the largest
+variance for the Return to Homelessness metric by region. Philadelphia
+COC "PA-500" has a slightly lower rate than the Metro Pop center average & from all
+years examined, this is the one bright spot comparing Philadelphia to it's 
+counterparts in the region.
+
+```{r echo=FALSE, results='hide'}
+HUD <- HUD[order(HUD$COC),]
+HUD[37,]
+
+
+HUD$X2021Rank <- rank(HUD$X2021)
+HUD$X2019Rank <- rank(HUD$X2019)
+HUD$SS2021Rank <- rank(HUD$SS2021)
+HUD$SS2019Rank <- rank(HUD$SS2019)
+HUD$R2021Rank <- rank(HUD$R2021)
+HUD$R2019Rank <- rank(HUD$R2019)
+
+HUD %>% 
+  group_by(COC, X2021Rank, X2019Rank, SS2021Rank, R2021Rank, R2019Rank) %>% 
+  arrange(desc(X2021Rank))
+
+(Rank_21 <-  aggregate(X2021Rank ~ COC + SS2021Rank + R2021Rank, data = HUD, FUN = max))
+#(Rank_19 <- ) same variables and then cbind all the single year comparisons?  ggplot  AVG length v Return Rate?  Income??  Add other variables first
+
+(Rank_19 <- aggregate(X2019Rank ~ COC + SS2019Rank + R2019Rank, data = HUD, FUN = max))
+(Rank_all <- merge(Rank_21, Rank_19, by = "COC"))
+
+
+#Histogram showing regional average, nat'l average as lines?
+
+
+```
+
+```{r  echo=FALSE, }
+(Rank_all[37, ])
+
+
+
+```
+Another way of contextualizing the CoC's effectiveness, by Ranking against the Urban Group, PA-500 was 39th out 49 in Successful Exit Rate in 2021, 36th out of 49 in Average Stay, 21st out of 49 in Return Rate...
+
+
+
+
+
+```{r, results='hide', message=FALSE, warning=FALSE, echo=FALSE}
+
+First_homeless <- read.csv("./FirstTimeHmlss.csv")
+summary(First_homeless)
+
+#Changing variable names for years to merge with Avg Stay Data
+First_homeless <- rename(First_homeless, COC = ï..HUD.CoC.Number)
+
+First_homeless <- rename(First_homeless, F2015 = X2015)
+First_homeless <- rename(First_homeless, F2016 = X2016)
+First_homeless <- rename(First_homeless, F2017 = X2017)
+First_homeless <- rename(First_homeless, F2018 = X2018)
+First_homeless <- rename(First_homeless, F2019 = X2019)
+First_homeless <- rename(First_homeless, F2020 = X2020)
+First_homeless <- rename(First_homeless, F2021 = X2021)
+
+
+summary(First_homeless)
+#Change column vectors from Character to Numeric
+
+First_missing <-First_homeless[which(is.na(First_homeless$F2017)) , ]
+#Missouri COC missing data after 2016 so lets just remove this Row
+
+First_homeless <- na.omit(First_homeless)
+summary(First_homeless)
+
+
+#non_Outreach_exit <- na.omit(non_Outreach_exit)
+#summary(non_Outreach_exit)
+
+HUD <- merge(HUD, First_homeless, by = "COC", all = FALSE)
+HUD
+
+```
+
+```{r echo=FALSE, results='hide'}
+summary(HUD$F2019)
+
+HUD[37, ]
+# 2019  PA-500 9402
+#  2019  Median 3733
+#2021 PA-500 7743
+#Median 3531, mean 4370
+
+
+#remove outlier throwing our plot
+
+HUD_outlier <- HUD[32, ]
+
+#ggbetweenstats()
+
+
+First_filtered <- HUD[HUD$F2019 < 12000,]
+summary(First_filtered)
+
+summary(HUD$F2021)
+#Median Value for F2021 is 3547, Max is crazy with an outlier of 42000
+
+First_filtered_21 <- HUD[HUD$F2021 < 12000,]
+summary(First_filtered_21$F2021)
+
+First_filtered_18 <- HUD[HUD$F2018 < 12000,]
+#PA = 8638
+#mean = 6554
+#median = 4094
+First_filtered_17 <- HUD[HUD$F2017 < 12000,]
+#PA = 5748
+#mean = 6399
+#median = 4198
+summary(First_homeless)
+
+
+
+
+
+
+
+```
+
+```{r, results='hide', echo=FALSE}
+
+First_homeless_all <- read.csv("./FirstTimeHmls_all.csv")
+summary(First_homeless_all)
+
+#Changing variable names for years to merge with Avg Stay Data
+First_homeless_all <- rename(First_homeless_all, COC = ï..HUD.CoC.Number)
+
+First_homeless_all <- rename(First_homeless_all, F2015 = X2015)
+First_homeless_all <- rename(First_homeless_all, F2016 = X2016)
+First_homeless_all <- rename(First_homeless_all, F2017 = X2017)
+First_homeless_all <- rename(First_homeless_all, F2018 = X2018)
+First_homeless_all <- rename(First_homeless_all, F2019 = X2019)
+First_homeless_all <- rename(First_homeless_all, F2020 = X2020)
+First_homeless_all <- rename(First_homeless_all, F2021 = X2021)
+
+
+summary(First_homeless_all)
+
+First_homeless_all$F2015[is.na(First_homeless_all$F2015)] <- mean(First_homeless_all$F2015, na.rm = TRUE)
+First_homeless_all$F2016[is.na(First_homeless_all$F2016)] <- mean(First_homeless_all$F2016, na.rm = TRUE)
+First_homeless_all$F2017[is.na(First_homeless_all$F2017)] <- mean(First_homeless_all$F2017, na.rm = TRUE)
+First_homeless_all$F2018[is.na(First_homeless_all$F2018)] <- mean(First_homeless_all$F2018, na.rm = TRUE)
+First_homeless_all$F2019[is.na(First_homeless_all$F2019)] <- mean(First_homeless_all$F2019, na.rm = TRUE)
+First_homeless_all$F2020[is.na(First_homeless_all$F2020)] <- mean(First_homeless_all$F2020, na.rm = TRUE)
+First_homeless_all$F2021[is.na(First_homeless_all$F2021)] <- mean(First_homeless_all$F2021, na.rm = TRUE)
+
+
+Full_HUD <- merge(Full_HUD, First_homeless_all, by = "COC", all = FALSE)
+Full_HUD
+
+
+
+```
+###  A Quick look at First Time Homeless
+
+```{r  echo=FALSE}
+par(mfrow = c(1,2))
+par(bg = "White", fg = "white", col.axis = "gray47", mar = c(6,4,4,2), cex = .65, las = 1)
+boxplot(First_filtered$F2019~First_filtered$Region, horizontal = TRUE, main = "First Time Homeless 2019",
+        data = HUD, las = 2, cex.axis=.75, col = c("bisque", "azure", "coral", "mistyrose3"),
+        xlab = "1st Time Homeless", ylab = "HUD Region", caption = "PA is red line, East Average is blue line")
+abline(v = c(9400, 6154), lty = "dotted", lwd = 3, col = c("red", "blue"))
+legend(x = "top",
+       inset = c(0, -0.5),
+       legend = c("PA-500", "East Mean"),
+lty = c(1,2),
+col = c("red", "blue"),
+lwd = 2,
+xpd = TRUE,
+horiz = TRUE
+  )
+
+
+#text(x = 9000, y = 4, label = "PA = 9402", cex = 1, col = "red")
+#text(x = 9000, y =3.5, label = "East Mean = 6154", cex = 1, col = "blue")
+  
+
+
+
+
+par(bg = "White", fg = "white", col.axis = "gray47", mar = c(7,8,5,4), cex = .65, las = 1)
+boxplot(First_filtered_21$F2021~First_filtered$Region, horizontal = TRUE, main = "First Time Homeless 2021",
+        data = HUD, las = 2, cex.axis=.75, col = c("bisque", "azure", "coral", "mistyrose3"),
+        xlab = "1st Time Homeless", ylab = "HUD Region")
+abline(v = c(7743, 5478), lty = "dotted", lwd = 3, col = c("red", "blue"))
+#mtext("                                                 PA = 7743 ", side = 3, adj = 0, line = -4, cex = .68, col = "red")
+#mtext("                                       East Mean = 5478 ", side = 4, adj = 0, line = -14, cex = .68, col = "blue")
+
+
+par(bg = "White", fg = "white", col.axis = "gray47", mar = c(7,8,5,4), cex = .65, las = 1)
+boxplot(First_filtered_21$F2018~First_filtered$Region, horizontal = TRUE, main = "First Time Homeless 2018",
+        data = HUD, las = 2, cex.axis=.75, col = c("bisque", "azure", "coral", "mistyrose3"),
+        xlab = "1st Time Homeless", ylab = "HUD Region")
+abline(v = c(8638, 6554), lty = "dotted", lwd = 3, col = c("red", "blue"))
+#mtext("                                                 PA = 8638 ", side = 3, adj = 0, line = -4, cex = .68, col = "red")
+#mtext("                                       East Mean = 6554 ", side = 4, adj = 0, line = -14, cex = .68, col = "blue")
+
+
+par(bg = "White", fg = "white", col.axis = "gray47", mar = c(7,8,5,4), cex = .65, las = 1)
+boxplot(First_filtered_17$F2017~First_filtered_17$Region, horizontal = TRUE, main = "First Time Homeless 2017",
+        data = First_filtered_17, las = 2, cex.axis=.75, col = c("bisque", "azure", "coral", "mistyrose3"),
+        xlab = "1st Time Homeless", ylab = "HUD Region")
+abline(v = c(5748, 6399), lty = "dotted", lwd = 3, col = c("red", "blue"))
+#mtext("                                           PA = 7743 ", side = 3, adj = 0, line = -4, cex = .68, col = "red")
+#mtext("                                    East Mean = 6399 ", side = 4, adj = 0, line = -14, cex = .68, col = "blue")
+
+
+
+
+
+
+
+
+
+#Finaldive %>%
+  #ggplot(aes(x = EPA.play, y = Offense.DVOA)) +
+  #geom_hline(yintercept = mean(Finaldive$EPA.play), color = "red", linetype = "dashed", alpha=0.5) +
+  #geom_vline(xintercept =  mean(Finaldive$Offense.DVOA), color = "red", linetype = "dashed", alpha=0.5) +
+  #geom_image(aes(image = team_logo_wikipedia), size=.085) + 
+  #labs(x = " EPA/play",
+   #    y = "Offensive DVOA",
+    #   title = "EPA v DVOA, 2021",
+     #  caption = "Data: @nflfastR, Football Outsiders") +
+  # theme_bw() +
+  #theme(
+   # aspect.ratio = 9 / 16,
+  #  plot.title = element_text(size = 14, hjust = 0.6, face = "bold")
+  #) +
+  #scale_y_continuous(breaks = scales::pretty_breaks(n = 10)) +
+  #scale_x_continuous(breaks = scales::pretty_breaks(n = 10))
+
+
+
+
+```
+The red line in each box plot shows Philadelphia's value in each year, the blue line is the average for the East Region. Adjusting for outliers we can see PA is still well beyond the Eastern cluster 
+of CoC's in all but 1 year (2017 in which the East cluster overall had a much smaller distribution in First Time Homelessness).  
+
+
+```{r  echo=FALSE, message=FALSE, fig.align='center'}
+
+First_den_2 = density(Full_HUD$F2021, bw = 12)
+Group_F2021 = density(HUD$F2021)
+Region_F2021_sub <- subset(HUD, Region = "East")
+Region_F2021_line <- density(Region_F2021_sub$F2021, bw = 5)
+
+par(mfrow = c(2,2))
+First_den_ = density(Full_HUD$F2021)
+plot(First_den_, cex.axis = .5,
+     main = "a. All COC's First Time Homeless",
+     lwd = 2)
+
+hist(Full_HUD$F2021, breaks = 20,
+     main = "b. Histogram + Kernal density", col = "maroon",
+     las = 1, cex.axis = .8, freq = F)
+lines(First_den_, lwd = 2)
+
+
+par(mfrow = c(1,1))
+First_den_1 = density(Full_HUD$F2021, bw = 5)
+hist(Full_HUD$F2021, breaks = 50, xlim = c(0, 12000),
+     main = "1st Time Homelessness + kernal density",
+     col = "maroon", las = 1, cex.axis = .8, labels = Full_HUD$F2021,
+     freq = F)
+lines(c(First_den_,First_den_1), lwd = 2, col = c("blue", "coral"))
+lines(c(First_den_2, Group_F2021, Region_F2021_line), lwd = 2, col = c("darkgoldenrod1", "darkorchid4"))
+
+
+
+
+
+```
+The golden line shows the volatility of this metric while generally following the outline for the general 
+distribution of First Time homeless. 
+
+```{r include=FALSE, echo=FALSE}
+remove(First_homeless)
+remove(First_missing)
+remove(HUD_outlier)
+remove(Rank_19)
+remove(Rank_21)
+remove(Rank_all)
+#remove(Returns)
+#remove(non_Outreach_exit)
+
+remove(dt)
+remove(dt1)
+remove(First_filtered)
+remove(First_filtered_17)
+
+remove(Regional_Avg_by_year)
+remove(group_avg_stay)
+remove(Regional_Avg)
+
+
+#write.csv(HUD, "./HUD_45v.csv", row.names = FALSE )
+
+#New_HUD <- read.csv("./HUD_45v.csv")
+#names(New_HUD)
+
+#HUD <- HUD[order(HUD$COC),]
+
+#  PRINT PA-500 RANK X2015 - X2021 for binding with regional_avg_stay
+#PA_Rank <- New_HUD
+
+
+#HUD <- HUD[order(HUD$COC),]
+
+#PA <- subset(HUD, COC == 'PA-500', select = c(Region, X2015:X2021))
+
+
+#PA <-  HUD[which(HUD$COC == 'PA-500'),]
+#PA <- PA[25, 2:8]
+
+
+#(PA <- HUD[37, 25, 2:8])
+
+#regional_avg_stay <- rbind(regional_avg_stay, PA)
+
+
+#regional_avg_stay$Region <- as.character(regional_avg_stay$Region)
+
+#Had to change column 1 of the Philadelphia summary from Region (needed for the Rbind to character vector to change ID to PA-500)
+#regional_avg_stay[5,1] <- 'PA-500'
+#print(regional_avg_stay)
+
+```
+
+```{r include=FALSE}
+#merging the ALL COC datasets 
+
+#Install Chat GPT, watch tutorial that I reposted on twitter & see if it can write the looping code to rename the variables of ALLCOCExit, ALLCOCreturn, Full_HUD, etc and then maybe lets run a corr matrix to see what correlation is there and do some single linear regression analysis and some diagnostics and put a bow on this.  
+
+
+
+
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+FX2021 <- First_filtered_21 %>% 
+ggplot(aes(x = F2021, y = X2021)) +
+  geom_hline(yintercept = mean(First_filtered_21$X2021), color = "red", linetype = "dashed", alpha = 0.5) +
+  geom_vline(xintercept = mean(First_filtered_21$F2021), color = "red", linetype = "dashed", alpha = 0.5) +
+  geom_point() +
+  labs( x = "First Time Homeless, all Coc's 2021",
+        y = "Average Length of Stay, all coC's 2021",
+        caption = "HUD Data via Tableau") +
+  theme_bw() +
+  theme(
+    aspect.ratio = 9 / 16,
+    plot.title = element_text(size = 14, hjust = 0.6, face = "bold")
+  ) +
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 10)) +
+  scale_x_continuous(breaks = scales::pretty_breaks(n = 10))
+
+FX2021_1 <- FX2021 + geom_smooth(color = "blue", linetype = "dotdash", linewidth = 1) 
+print(FX2021_1)
+```
+This first plot shows us the intersection of the mean value for Average Length of Stay (the red horizontal line) & the mean value for First Time Homeless (the red vertical line) & the blue line shows us the relationship between these two variables is anti-linear.
+
+
+```{r echo=FALSE}
+
+FX2021_2 <- Full_HUD %>% 
+ggplot(aes(x = F2021, y = X2021)) +
+  geom_hline(yintercept = mean(Full_HUD$X2021), color = "red", linetype = "dashed", alpha = 0.5) +
+  geom_vline(xintercept = mean(Full_HUD$F2021), color = "red", linetype = "dashed", alpha = 0.5) +
+  geom_point() +
+  labs( x = "First Time Homeless, Urban Group 2021",
+        y = "Average Length of Stay, Urban Group 2021",
+        caption = "HUD Data via Tableau") +
+  theme_bw() +
+  theme(
+    aspect.ratio = 9 / 16,
+    plot.title = element_text(size = 14, hjust = 0.6, face = "bold")
+  ) +
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 10)) +
+  scale_x_continuous(breaks = scales::pretty_breaks(n = 10))
+
+FX2021_3 <- FX2021_2 + geom_smooth(color = "blue", linetype = "dotdash", linewidth = 1) 
+print(FX2021_3)
+```
+
+This next view is the same variables but only taking the value of the 50 COC's in the Urban Group.  Again, the relationship is non-linear. 
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+
+
+#Success Rate predicting Average Length of Stay in Urban Group
+SSX2021 <- HUD %>% 
+  ggplot(aes(x = SS2021, y = X2021)) +
+  geom_hline(yintercept = mean(HUD$X2021), color = "red", linetype = "dashed", alpha = 0.5) +
+  geom_vline(xintercept = mean(HUD$SS2021), color = "red", linetype = "dashed", alpha = 0.5) +
+  geom_point() +
+  labs( x = "Success Rate, Urban Group 2021",
+        y = "Average Length of Stay, Urban Group 2021",
+        caption = "HUD Data via Tableau") +
+  theme_bw() +
+  theme(
+    aspect.ratio = 9 / 16,
+    plot.title = element_text(size = 14, hjust = 0.6, face = "bold")
+  ) +
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 10)) +
+  scale_x_continuous(breaks = scales::pretty_breaks(n = 10))
+
+SSX2021_2 <- SSX2021 + geom_smooth(color = "blue", linetype = "dotdash", linewidth = 1) 
+print(SSX2021_2)
+```
+This next plot shows us a similiar non-linear relationship between Average Length of stay and Success Rate among the Urban Group.
+
+
+
+```{r echo=FALSE}
+#Return Rate predicting Average Length of Stay in Urban Group
+RX2021 <- HUD %>% 
+  ggplot(aes(x = R2021, y = X2021, color = Region)) +
+  geom_hline(yintercept = mean(HUD$X2021), color = "red", linetype = "dashed", alpha = 0.5) +
+  geom_vline(xintercept = mean(HUD$R2021), color = "red", linetype = "dashed", alpha = 0.5) +
+  geom_point() +
+  labs( y = "Average Length of Stay Urban Group 2021",
+        x = "Return to Homelessness, Urban Group 2021",
+        caption = "HUD Data via Tableau") +
+  theme_bw() +
+  theme(
+    aspect.ratio = 9 / 16,
+    plot.title = element_text(size = 14, hjust = 0.6, face = "bold")
+  ) +
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 10)) +
+  scale_x_continuous(breaks = scales::pretty_breaks(n = 10))
+
+RX2021_2 <- RX2021 + geom_smooth(color = "blue", linetype = "dotdash", linewidth = 1) 
+print(RX2021_2)
+```
+This plot looks at the relationship between Average Length of Stay and Return to Homeless, again, non-linear and with very little patterns between the subset of regions, identified by the respective color on the scatter plot.
+
+
+
+```{r echo=FALSE}
+
+#SS Success Rate predicting Avg Length of Stay, all Coc's?
+
+SSX2021.2 <- Full_HUD %>% 
+  ggplot(aes(x = SS2021, y = X2021)) +
+  geom_hline(yintercept = mean(Full_HUD$X2021), color = "red", linetype = "dashed", alpha = 0.5) +
+  geom_vline(xintercept = mean(Full_HUD$SS2021), color = "red", linetype = "dashed", alpha = 0.5) +
+  geom_point() +
+  labs( x = "Success Rate, All Coc's 2021",
+        y = "Average Length of Stay, All Coc's 2021",
+        caption = "HUD Data via Tableau") +
+  theme_bw() +
+  theme(
+    aspect.ratio = 9 / 16,
+    plot.title = element_text(size = 14, hjust = 0.6, face = "bold")
+  ) +
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 10)) +
+  scale_x_continuous(breaks = scales::pretty_breaks(n = 10))
+
+SSX2021.3 <- SSX2021.2 + geom_smooth(color = "blue", linetype = "dotdash", linewidth = 1) 
+print(SSX2021.3)
+```
+This plot takes a look at Average Length of Stay and Success Rate for the National dataset.  The relationship is non-linear but suggests an almost upward pattern which is counterintuitive.  
+
+
+
+
+```{r echo=FALSE, include=FALSE}
+
+
+#Seeking control linear regression
+XR2021 <- HUD %>% 
+  ggplot(aes(x = X2021, y = X2021Rank, color = Region)) +
+  geom_hline(yintercept = mean(HUD$X2021Rank), color = "red", linetype = "dashed", alpha = 0.5) +
+  geom_vline(xintercept = mean(HUD$X2021), color = "red", linetype = "dashed", alpha = 0.5) +
+  geom_point() +
+  labs( x = "Average Length of Stay, Urban 2021",
+        y = "Avg Stay Rank 2021 ",
+        caption = "HUD Data via Tableau") +
+  theme_bw() +
+  theme(
+    aspect.ratio = 9 / 16,
+    plot.title = element_text(size = 14, hjust = 0.6, face = "bold")
+  ) +
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 10)) +
+  scale_x_continuous(breaks = scales::pretty_breaks(n = 10))
+
+
+
+XR2021.2 <- XR2021 + geom_abline(color = "blue", linetype = "dotdash", linewidth = 1)
+print(XR2021.2)
+
+
+
+
+
+```
+Lastly here are some corrgrams to see if any of the variables of our Urban subset and the Nat'l data set have positive or negative correlation with one another.  It appears that the only positive correlation exists between different years of the same variable, e.g. Success Rate in 2021 and Outreach Success Rate in 2021...  We can see the values in the corrgram following the plots.  
+
+
+```{r   echo=FALSE, message=FALSE}
+
+library(car)
+attach(HUD)
+pairs(~ X2021 + S2021 + SS2021 + R2021 + F2021,
+      pch = 16,
+      col = "deepskyblue")
+
+scatterplotMatrix(~ ~ X2021 + S2021 + SS2021 + R2021 + F2021,
+      pch = 16,
+      col = "deepskyblue")
+
+detach(HUD)
+
+attach(First_filtered_21)
+pairs(~ X2021 + SS2021 + F2021,
+      pch = 16,
+      col = "darkolivegreen")
+
+scatterplotMatrix(~ X2021 + SS2021 + F2021,
+      pch = 16,
+      col = "darkolivegreen")
+
+detach(First_filtered_21)
+
+cor(HUD[ , c(8, 15, 22, 29, 33, 45)], method = "pearson")
+cormat_u <-  round(cor(HUD[, c(8, 15, 22, 29, 33, 45)], method = "pearson"),2)
+
+print(cormat_u)
+
+cor(Full_HUD[ , c(8, 15, 22)], method = "pearson")
+cormat_a <- round(cor(Full_HUD[ , c(8, 15, 22)], method = "pearson"), 2)
+
+print(cormat_a)
+
+#Next Step, do the Corr tile mat & corrgrams and some ML
+
+
+#ggplot(data = cormat, aes(x=Var1, y=Var2,
+ # fill=value)) +
+#  geom_tile() +
+#  geom_text(aes(Var2, Var1, label = value),
+#  color = "black", size = 4)
+
+
+#WinRank <- Finaldive%>%
+ # ggplot(aes(x = Offense.DVOA.Rank, y = Estimated.Wins.Rank)) +
+  #geom_hline(yintercept = mean(Finaldive$Offense.DVOA.Rank), color = "red", linetype = "dashed", alpha=0.5) +
+  #geom_vline(xintercept =  mean(Finaldive$Estimated.Wins.Rank), color = "red", linetype = "dashed", alpha=0.5) +
+  #geom_image(aes(image = team_logo_wikipedia), size=.085) +
+  #labs(x = "Offensive DVOA Rank #1-32\n (Lower is Better)",
+   #    y = "Estimated Wins Rank #1-32\n(Lower is Better",
+  #     title = "Estimated Win League Rank vs Offensive DVOA Rank",
+  #     caption = "Data: @nflfastR, Football Outsiders") +
+  #theme_bw() +
+  #theme(
+  #  aspect.ratio = 9 / 16,
+  #  plot.title = element_text(size = 14, hjust = 0.6, face = "bold")
+  #) +
+  #scale_y_continuous(breaks = scales::pretty_breaks(n = 10)) +
+  #scale_x_continuous(breaks = scales::pretty_breaks(n = 10)) 
+
+#WinRank1 <- WinRank + geom_abline(color = "red", linetype = "dotdash",
+                           #       size = 1)
+
+#WinRank1 + geom_text(overlap = FALSE, x=18, y=5, col = "forestgreen", size = 6, 
+                  #   label = "Y = 1.17 +.93x")
+```
+Finally, it appears there is a loose correlation in the 2021 year between Average Time of Stay and Success Rate in the urban group.   
+
+
+
+```{r  echo = FALSE}
+
+
+Group_U =  cor(HUD[ , c(8, 15, 22, 29, 33, 45)], method = "pearson")
+par(mfrow = c(2,2))
+corrplot(Group_U)
+corrplot(Group_U, method = "color")
+corrplot(Group_U, method = "number")
+corrplot(Group_U, method = "ellipse", type = "lower")
+
+
+
+
+#cormat = round(cor(HUD[, c(8, 15, 22, 29, 33, 45)], method = "pearson"),2)
+
+
+
+
+
+
+
+#cor(Finaldive2[ , c(121,93,56,62,112,76,72,78) ], method = "pearson")
+#cormat<-round(cor(Finaldive2[ , c(121,93,56,62,112,76,72,78) ], method = "pearson"),2)
+#melted_cormat <- melt(cormat)
+#ggplot(data = melted_cormat, aes(x=Var1, y=Var2, 
+ #                            #  fill=value)) +
+#  geom_tile() +
+# geom_text(aes(Var2, Var1, label = value),  
+  #        #  color = "black", size = 4)
+
+
+
+
+```
+Correlating these variables in the 2021 year to prep for a ML regression...
+```{r include=FALSE, eval=FALSE}
+
+#ggscatmat(HUD, columns = c(8, 15, 22, 29, 33, 45))
+#HUD1 <-  HUD[c(8,15,22,29,35,45)]
+
+HUD1 <-  subset(HUD, select = c("COC", "X2021", "S2021", "SS2021", "R2021", "X2021Rank", "F2021" ))
+#ggscatmat(HUD1, columns = c(2:7))
+
+
+
+
+```
+
+
+
+
+```{r, echo=FALSE}
+lm1 <- lm(X2021~SS2021, data = HUD)
+lm1
+summary(lm1)
+summary(lm1$coefficients)
+
+lm2 <-  lm(X2021~SS2021, data = Full_HUD)
+lm2
+summary(lm2)
+
+```
+While there is some correlation, the relationship is insignificant and we accept the null hypothesis as the p-value is exceedingly high & adjusted R-squared values indicate it may explian less then 1% of variability for our response variable.
+
+
+
+```{r}
+attach(HUD)
+plot(X2021, SS2021, pch = 20, xlab = "Average Length of Stay", ylab = "Success Rate")
+lines(X2021, lm1$fitted.values, lwd=3, col = "red")
+detach(HUD)
+```
+
+
+```{r}
+attach(Full_HUD)
+plot(X2021, SS2021, pch = 20, xlab = "Average Length of Stay", ylab = "Success Rate")
+lines(X2021, lm2$fitted.values, lwd=3, col = "red")
+
+
+
+```
+
+As we saw from the simple linear regression that using Average Length of Stay as the response variable and considering First Time Homeless, Successful Exit Rate, Return rate etc there is not a linear relationship between the variables.    NOw let's see if the combination of all the variables show any sort of significant relationship using the Urban group for which we have far more variables to consider. 
+
+```{r echo=FALSE}
+m2 <- lm(X2021~S2021+SS2021+R2021+F2021, data = First_filtered_21)
+summary(m2)
+
+par(mfrow = c(2,2))
+plot(m2)
+
+
+
+
+```
+Even plugging in a filtered subset and using all variables, it only explains roughly 5% of the variance we see Average Time of Stay.   We can also use Region as a factor variable to see if any relationship can be spotted here. 
+```{r  echo=FALSE}
+
+lm3 <- lm(F2021~SS2021, data = Full_HUD)
+summary(lm3)
+
+lm5 <- lm(X2021~F2021, data = Full_HUD)
+summary(lm5)
+
+lm4 <- lm(R2021~SS2021, data = HUD)
+summary(lm4)
+par(mfrow = c(2,2))
+plot(lm4)
+
+lm6 <- lm(X2021~Region, data = HUD)
+summary(lm6)
+
+
+
+SSX2021.4 <- HUD %>% 
+  ggplot(aes(x = SS2021, y = R2021)) +
+  geom_hline(yintercept = mean(HUD$R2021), color = "red", linetype = "dashed", alpha = 0.5) +
+  geom_vline(xintercept = mean(HUD$SS2021), color = "red", linetype = "dashed", alpha = 0.5) +
+  geom_point() +
+  labs( x = "Success Rate, Urban Group 2021",
+        y = "Return to Homelessness 2021",
+        caption = "HUD Data via Tableau") +
+  theme_bw() +
+  theme(
+    aspect.ratio = 9 / 16,
+    plot.title = element_text(size = 14, hjust = 0.6, face = "bold")
+  ) +
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 10)) +
+  scale_x_continuous(breaks = scales::pretty_breaks(n = 10))
+
+SSX2021.5 <- SSX2021.4 + geom_abline(color = "blue", linetype = "dotdash", linewidth = 1) 
+print(SSX2021.5)
+
+
+
+
+
+```
+This is by far the best fit for any of these variables via regression analysis and as you can see none of the data even fit the silhoutte of the regression line, but unlike the others at least the abline is showing up on the axis of our plot.  Now for unsupervised learning let's visualize some simple clustering and interpret results.
+
+
+### Clustering and K-Nearest Neighbors
+
+
+```{r  echo=FALSE, results='hide'}
+
+#scaled_Full_HUD <- Full_HUD %>% 
+#  remove_rownames %>% column_to_rownames(var="COC")
+
+#Full_HUD %>% 
+ # remove_rownames %>% 
+#  column_to_rownames(var = "COC") %>% 
+#  as.data.frame()
+
+scaled_Full_HUD <-  Full_HUD[,-1]
+rownames(scaled_Full_HUD) <- Full_HUD[,1]
+
+scaled_Full_HUD <- scale(scaled_Full_HUD)
+
+
+HUD <-  HUD[-41,]
+
+
+scaled_HUD <-  HUD[,-1]
+rownames(scaled_HUD) <- HUD[,1]
+scaled_HUD <- scaled_HUD[, c(1:28,32:44)]
+scaled_HUD <- scale(scaled_HUD)  
+  
+
+
+
+#scaled_HUD <-  scale(HUD)
+
+#df <- USArrests
+
+
+
+```
+
+
+```{r echo=FALSE}
+par(mar = c(8,5,4,4))
+distance <- get_dist(scaled_Full_HUD)
+fviz_dist(distance, gradient = list(low = "00AFBB", mid = "white", high = "#FC4E07"))
+
+
+distance1 <- get_dist(scaled_HUD)
+fviz_dist(distance1, gradient = list(low = "00AFBB", mid = "white", high = "#FC4E07"))
+
+
+```
+
+```{r echo=FALSE, results='hide'}
+k1 <-  kmeans(scaled_Full_HUD, centers = 5, nstart = 25)
+str(k1)
+k1
+```
+
+
+```{r echo=FALSE}
+k1$cluster
+
+cluster2 <- k1$cluster[which(k1$cluster == 2)]
+cluster2
+dim(cluster2)
+
+(grouping <- filter(HUD, Region == "East"))
+
+```
+
+K-means clustering using 5 groups and taking the entire group of COC's, shows us that PA-500 (Philadelphia) has more in common with these COC's considering variability of each year's data we've been working with.  Interestingly, many of the Eastern region COC's (NY, VA, FL) have less in common with Philadelphia, and less in common with a handful of COc's that HUD has used to subset the Urban group.  
+```{r echo=FALSE}
+fviz_cluster(k1, data = scaled_Full_HUD)
+
+
+scaled_Full_HUD %>% 
+  as_tibble()  %>% 
+  mutate(cluster = k1$cluster,
+         COC = row.names(scaled_Full_HUD))  %>% 
+  ggplot(aes(X2021, SS2021, color = factor(cluster), label = COC)) +
+  geom_text()
+
+```
+
+Even using this nearest neighbor clustering technique there is very little value in 
+grouping the points that would appear to cluster based on the variable data in the 
+urban set. Perhaps a broader study in which clustering looks at the full data set of 
+all CoC's and figure out a more cohesive method of grouping CoC's better than the 
+broad geographic buckets I selected earlier in this exercise. 
+
+```{r}
+k2 <- kmeans(scaled_Full_HUD, centers = 8, nstart = 25)
+k3 <- kmeans(scaled_Full_HUD, centers = 4, nstart = 25)
+k4 <- kmeans(scaled_Full_HUD, centers = 6, nstart = 25)
+
+p1 <- fviz_cluster(k1, geom = "point", data = scaled_Full_HUD) + ggtitle("k = 1")
+p2 <- fviz_cluster(k2, geom = "point", data = scaled_Full_HUD) + ggtitle("k = 2")
+p3 <- fviz_cluster(k3, geom = "point", data = scaled_Full_HUD) + ggtitle("k = 3")
+p4 <- fviz_cluster(k4, geom = "point", data = scaled_Full_HUD) + ggtitle("k = 4")
+
+grid.arrange(p1, p2, p3, p4, nrow = 2)
+
+
+```
+And just a quick comparison of our original values vs the scaled and normalized values for the full data set...  Again, even by standardizing our data set to a z score of standard deviation "0", we accept our null hypothesis and consider the relationship insignificant and not useful for machine learning. 
+
+```{r echo=FALSE}
+
+scaled_Full_HUD <- as.data.frame(scaled_Full_HUD)
+
+
+ggplot(data = scaled_Full_HUD) + geom_point(
+  mapping = aes(x = F2021, y = X2021),
+  position = "jitter"
+)
+
+par(mfrow = c(2,2))
+FullX2021 = density(scaled_Full_HUD$X2021)
+plot(FullX2021, cex.axis = .5,
+     main = "a. All COC's Avg Length of Stay, Density Plot",
+     lwd = 2)
+
+hist(scaled_Full_HUD$X2021, breaks = 20,
+     main = "b. Histogram + Kernal density", col = "maroon",
+     las = 1, cex.axis = .8, freq = F)
+lines(FullX2021, lwd = 2)
+
+Fullx2021_2 = density(scaled_Full_HUD$X2021, bw = 5)
+hist(scaled_Full_HUD$X2021, breaks = 20,
+     main = "c. Histogram + Kernal Density, bw = 5",
+     col = "maroon", las = 1, cex.axis = .8,
+     freq = F)
+lines(Fullx2021_2, lwd = 2)
+
+Fullx2021_3 = density(scaled_Full_HUD$X2021, bw = 12)
+Group_2021 = density(HUD$X2021)
+Region_2021_sub <- subset(HUD, Region = "East")
+Region_2021_line <- density(Region_2021_sub$X2021)
+
+
+
+
+
+
+```
+
+
+
+
